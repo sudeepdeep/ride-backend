@@ -10,6 +10,8 @@ from rest_framework.permissions import IsAuthenticated
 from django.http import HttpResponse
 from django.db.models import Q
 from .custom_permissions import *
+from django.http import QueryDict
+from django.db.models import F  
 
 
 class RegisterAPI(APIView):
@@ -18,11 +20,6 @@ class RegisterAPI(APIView):
             data = request.data
             serializer = UserSerializer(data = data)
             if serializer.is_valid():
-                user = user.first()
-                if data.get('user_type') == 'admin':
-                    user.is_admin = True
-                if data.get('user_type') == 'support':
-                    user.is_staff = True
 
                 serializer.save()
                 send_otp_email(serializer.data['username'])
@@ -68,11 +65,16 @@ class VerifyOTP(APIView):
                         'message': 'Invalid OTP',
                         'data': 'Wrong OTP',
                     })
-
-
+                    
 
                 user = user.first()
                 user.is_verified = True
+
+                if(user.user_type == 'driver'):
+                    user.user_type = 'driver'
+                    # user = RideHistory.objects.create(user = user)
+                    driver_doc = DocumentsList(driver_id = user)
+                    driver_doc.save()
                 user.save()
                 return Response({
                     'status': 200,
@@ -87,6 +89,20 @@ class VerifyOTP(APIView):
             })
         except Exception as e:
             print(e)
+
+
+class RideHistoryAPI(APIView):
+    def get(self, request):
+        
+        users = User.objects.filter(Q(user_type='user') | Q(user_type='driver'))
+        serializer = UserSerializer(users, many = True)
+
+        return {
+            'status': 200,
+            'data': serializer.data
+        }
+
+
 
 
 
@@ -131,19 +147,22 @@ class LogoutAPI(APIView):
 
 
 class VehicleTypeAPI(APIView):
-    # authentication_classes = [TokenAuthentication]
-    # permission_classes = [IsAdmin]
+    authentication_classes = [TokenAuthentication]
+    permission_classes = [IsAdmin]
 
     def post(self, request):
         data  = request.data
         vehicle = VehicleTypeSerializer(data = data)
-        print(vehicle.is_valid())
         if vehicle.is_valid():
             vehicle.save()
             print("saved successfully")
+            return Response({
+                'status': 200,
+                'message': 'vehicle saved successfully'
+            })
         return Response({
-            'status': 200,
-            'message': 'vehicle saved successfully'
+            'status': 500,
+            'message': 'unable to save vehicle'
         })
 
     def get(self, request):
@@ -168,6 +187,94 @@ class VehicleTypeAPI(APIView):
 
         except Exception as e:
             print(e)
+
+
+class GetDriversAPI(APIView):
+    authentication_classes = [TokenAuthentication]
+    permission_classes = [IsAuthenticated]
+    def get(self, request, format = None):
+        users = User.objects.filter( Q(user_type='driver'))
+        serializer = UserSerializer(users, many = True)
+
+        doc_status = DocumentsList.objects.filter(driver_id=request.user.id).distinct('driver_id')
+        driver_doc = doc_status.values('status')
+        print(driver_doc)
+
+
+
+        return Response({
+            'status': 200,
+            'data': serializer.data
+        })
+
+
+
+
+class DriverDocumentsAPI(APIView):
+    authentication_classes = [TokenAuthentication]
+    # permission_classes = [IsDriver]
+    permission_classes = [IsAuthenticated]
+
+
+    def get(self, request):
+        documents = DocumentsList.objects.all()
+        payload = []
+
+        for document in documents:
+            payload.append({
+                "links": [
+                    {
+                    'name': 'aadhar',
+                    'link':str(document.aadhar_doc)
+                    },
+                    {
+                      'name': 'pancard',
+                    'link':str(document.pancard_doc) 
+                    },
+                    {
+                        'name': 'voter',
+                    'link':str(document.voter_doc)
+                    },
+                    {
+                        'name': 'license',
+                    'link':str(document.license_doc)
+                    },
+                    {
+                        'name': 'rc',
+                    'link':str(document.rc_doc)
+                    },
+                    {
+                        'name': 'insurance',
+                    'link':str(document.insurance_doc)
+                    },
+                ],
+              
+                'status': str(document.license_doc),
+                'driver_id': str(request.user.id),
+                'status': str(document.status),
+            })
+
+        return Response({
+                'status': 200,
+                'data': payload
+            })
+
+    def put(self, request):
+        data  = request.data
+        data['driver_id'] = request.user.id
+        user = DocumentsList.objects.get(driver_id = request.user.id)
+        documents = DriverDocumentsSerializer(user, data = data)
+        if documents.is_valid():
+            documents.save()
+            print("Driver Doc successfully")
+            return Response({
+                'status': 200,
+                'message': 'vehicle saved successfully'
+            })
+        return Response({
+            'status': 500,
+            'message': 'unable to save vehicle'
+        })
 
 
 

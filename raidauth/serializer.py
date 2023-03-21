@@ -19,3 +19,14 @@ class VehicleTypeSerializer(serializers.ModelSerializer):
     # cost_per_km = serializers.IntegerField()
     # status = serializers.BooleanField()
     # vehicle_image = serializers.ImageField()
+
+
+class DriverDocumentsSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = DocumentsList
+        fields = '__all__'
+
+class RideHistorySerializer(serializers.Serializer):
+    class Meta:
+        model = RideHistory
+        fields = '__all__'
